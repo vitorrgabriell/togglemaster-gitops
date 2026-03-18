@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: evaluation-service
+  namespace: tech-challenge
+  labels:
+    app: evaluation-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: evaluation-service
+  template:
+    metadata:
+      labels:
+        app: evaluation-service
+    spec:
+      containers:
+        - name: evaluation-service
+          image: 637423212910.dkr.ecr.us-east-1.amazonaws.com/togglemaster/evaluation-service:latest
+          ports:
+            - containerPort: 8004
+          envFrom:
+            - secretRef:
+                name: redis-secret
+            - secretRef:
+                name: aws-secret
+          env:
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: redis-secret
+                  key: REDIS_URL
+            - name: AWS_SQS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: aws-secret
+                  key: AWS_SQS_URL
+            - name: FLAG_SERVICE_URL
+              value: "http://flag-service.tech-challenge.svc.cluster.local:8002"
+            - name: TARGETING_SERVICE_URL
+              value: "http://targeting-service.tech-challenge.svc.cluster.local:8003"
+            - name: AUTH_SERVICE_URL
+              value: "http://auth-service.tech-challenge.svc.cluster.local:8001"
+            - name: AWS_REGION
+              value: "us-east-1"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8004
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8004
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi

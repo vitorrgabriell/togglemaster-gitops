@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: analytics-service
+  namespace: tech-challenge
+  labels:
+    app: analytics-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: analytics-service
+  template:
+    metadata:
+      labels:
+        app: analytics-service
+    spec:
+      containers:
+        - name: analytics-service
+          image: 637423212910.dkr.ecr.us-east-1.amazonaws.com/togglemaster/analytics-service:latest
+          ports:
+            - containerPort: 8005
+          envFrom:
+            - secretRef:
+                name: aws-secret
+          env:
+            - name: AWS_SQS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: aws-secret
+                  key: AWS_SQS_URL
+            - name: AWS_DYNAMODB_TABLE
+              value: "ToggleMasterAnalytics"
+            - name: AWS_REGION
+              value: "us-east-1"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8005
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8005
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
