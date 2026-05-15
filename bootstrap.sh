@@ -15,7 +15,7 @@ kubectl apply -n ${ARGOCD_NS} -f https://raw.githubusercontent.com/argoproj/argo
 
 echo "==> [3/6] Aguardando ArgoCD ficar pronto..."
 kubectl rollout status deployment/argocd-server -n ${ARGOCD_NS} --timeout=300s
-kubectl wait --for=condition=Ready pods --all -n ${ARGOCD_NS} --timeout=300s
+kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=argocd-server -n ${ARGOCD_NS} --timeout=300s
 
 echo "==> [4/6] Criando namespace ${NAMESPACE} e aplicando secrets..."
 kubectl apply -f "${SCRIPT_DIR}/base/namespace.yaml"
