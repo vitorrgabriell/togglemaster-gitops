@@ -6,7 +6,7 @@ metadata:
   labels:
     app: evaluation-service
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: evaluation-service
@@ -44,6 +44,14 @@ spec:
               value: "http://auth-service.tech-challenge.svc.cluster.local:8001"
             - name: AWS_REGION
               value: "us-east-1"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://otel-collector-opentelemetry-collector.monitoring.svc.cluster.local:4318"
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: "http/protobuf"
+            - name: OTEL_SERVICE_NAME
+              value: "evaluation-service"
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "service.namespace=togglemaster,deployment.environment=production"
           livenessProbe:
             httpGet:
               path: /health
