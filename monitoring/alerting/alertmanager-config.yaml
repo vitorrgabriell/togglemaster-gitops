@@ -1,0 +1,73 @@
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: togglemaster-alerts
+  namespace: monitoring
+  labels:
+    alertmanagerConfig: togglemaster
+spec:
+  route:
+    receiver: 'default-receiver'
+    groupBy: ['alertname', 'service']
+    groupWait: 10s
+    groupInterval: 1m
+    repeatInterval: 12h
+    routes:
+      - receiver: 'critical-receiver'
+        matchers:
+          - name: severity
+            value: critical
+        continue: true
+      - receiver: 'discord-receiver'
+        matchers:
+          - name: severity
+            value: critical
+        continue: true
+      - receiver: 'self-healing-receiver'
+        matchers:
+          - name: action
+            value: restart
+        continue: false
+
+  receivers:
+    - name: 'default-receiver'
+      discordConfigs:
+        - webhookURL:
+            name: discord-webhook-secret
+            key: webhook-url
+
+    - name: 'critical-receiver'
+      pagerdutyConfigs:
+        - routingKey:
+            name: pagerduty-secret
+            key: integration-key
+          description: '{{ .CommonAnnotations.summary }}'
+          severity: 'critical'
+          class: '{{ .CommonLabels.service }}'
+
+    - name: 'discord-receiver'
+      discordConfigs:
+        - webhookURL:
+            name: discord-webhook-secret
+            key: webhook-url
+          title: '🚨 {{ .CommonLabels.alertname }}'
+          message: |
+            **Service:** {{ .CommonLabels.service }}
+            **Severity:** {{ .CommonLabels.severity }}
+            **Summary:** {{ .CommonAnnotations.summary }}
+            **Description:** {{ .CommonAnnotations.description }}
+            
+            {{ range .Alerts }}
+            **Started:** {{ .StartsAt.Format "2006-01-02 15:04:05" }}
+            {{ end }}
+
+    - name: 'self-healing-receiver'
+      webhookConfigs:
+        - url: 'https://api.github.com/repos/vitorrgabriell/tech-challenge-fase-3-fiap/dispatches'
+          httpConfig:
+            authorization:
+              type: token
+              credentials:
+                name: github-token-secret
+                key: token
+          sendResolved: false

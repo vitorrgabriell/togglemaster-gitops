@@ -51,3 +51,32 @@ kubectl create secret generic aws-secret \
   --dry-run=client -o yaml | kubectl apply -f -
 
 echo "Secrets aplicados com sucesso!"
+
+# === Fase 4-E: Alerting secrets (namespace monitoring) ===
+MONITORING_NS="monitoring"
+echo "Aplicando secrets no namespace '$MONITORING_NS'..."
+
+kubectl create secret generic discord-webhook-secret \
+  --namespace="$MONITORING_NS" \
+  --from-literal=webhook-url="${DISCORD_WEBHOOK_URL}" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+kubectl create secret generic pagerduty-secret \
+  --namespace="$MONITORING_NS" \
+  --from-literal=integration-key="${PAGERDUTY_INTEGRATION_KEY}" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+kubectl create secret generic github-token-secret \
+  --namespace="$MONITORING_NS" \
+  --from-literal=token="${GITHUB_PAT}" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+echo "Secrets de alerting aplicados!"
+
+# === Fase 4-B: Datadog API key (namespace monitoring) ===
+kubectl create secret generic datadog-api-key \
+  --namespace="$MONITORING_NS" \
+  --from-literal=api-key="${DATADOG_API_KEY}" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+echo "Secret do Datadog aplicado!"
