@@ -32,7 +32,7 @@ spec:
   receivers:
     - name: 'default-receiver'
       discordConfigs:
-        - webhookURL:
+        - apiURL:
             name: discord-webhook-secret
             key: webhook-url
 
@@ -47,7 +47,7 @@ spec:
 
     - name: 'discord-receiver'
       discordConfigs:
-        - webhookURL:
+        - apiURL:
             name: discord-webhook-secret
             key: webhook-url
           title: '🚨 {{ .CommonLabels.alertname }}'
