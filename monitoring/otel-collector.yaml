@@ -19,6 +19,9 @@ spec:
         image:
           repository: otel/opentelemetry-collector-contrib
 
+        command:
+          name: otelcol-contrib
+
         replicaCount: 1
 
         resources:
@@ -51,6 +54,22 @@ spec:
             containerPort: 8888
             servicePort: 8888
             protocol: TCP
+          prometheus:
+            enabled: true
+            containerPort: 8889
+            servicePort: 8889
+            protocol: TCP
+
+        service:
+          enabled: true
+
+        serviceMonitor:
+          enabled: true
+          extraLabels:
+            release: kube-prometheus-stack
+          metricsEndpoints:
+            - port: prometheus
+              interval: 30s
 
         config:
           receivers:
@@ -108,12 +127,10 @@ spec:
                 receivers: [otlp]
                 processors: [memory_limiter, batch, resource]
                 exporters: [datadog, debug]
-
               metrics:
                 receivers: [otlp]
                 processors: [memory_limiter, batch, resource]
                 exporters: [prometheus, datadog]
-
               logs:
                 receivers: [otlp]
                 processors: [memory_limiter, batch, resource]
