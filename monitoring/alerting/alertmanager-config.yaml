@@ -7,18 +7,32 @@ metadata:
     alertmanagerConfig: togglemaster
 spec:
   route:
-    receiver: 'default-receiver'
+    receiver: 'discord-receiver'
     groupBy: ['alertname', 'service']
     groupWait: 10s
     groupInterval: 1m
     repeatInterval: 12h
     routes:
-      - receiver: 'critical-receiver'
+      # ─── Silenciar ruídos do kube-prometheus-stack ───
+      - receiver: 'null-receiver'
         matchers:
-          - name: severity
-            value: critical
-        continue: true
-      - receiver: 'discord-receiver'
+          - name: alertname
+            value: KubeSchedulerDown
+        continue: false
+      - receiver: 'null-receiver'
+        matchers:
+          - name: alertname
+            value: KubeControllerManagerDown
+        continue: false
+      - receiver: 'null-receiver'
+        matchers:
+          - name: alertname
+            value: KubePodCrashLooping
+          - name: namespace
+            value: argocd
+        continue: false
+
+      - receiver: 'critical-receiver'
         matchers:
           - name: severity
             value: critical
@@ -27,15 +41,9 @@ spec:
         matchers:
           - name: action
             value: restart
-        continue: false
-
+        continue: true
   receivers:
-    - name: 'default-receiver'
-      discordConfigs:
-        - apiURL:
-            name: discord-webhook-secret
-            key: webhook-url
-
+    - name: 'null-receiver'
     - name: 'critical-receiver'
       pagerdutyConfigs:
         - routingKey:
@@ -44,7 +52,6 @@ spec:
           description: '{{ .CommonAnnotations.summary }}'
           severity: 'critical'
           class: '{{ .CommonLabels.service }}'
-
     - name: 'discord-receiver'
       discordConfigs:
         - apiURL:
@@ -56,11 +63,9 @@ spec:
             **Severity:** {{ .CommonLabels.severity }}
             **Summary:** {{ .CommonAnnotations.summary }}
             **Description:** {{ .CommonAnnotations.description }}
-            
             {{ range .Alerts }}
             **Started:** {{ .StartsAt.Format "2006-01-02 15:04:05" }}
             {{ end }}
-
     - name: 'self-healing-receiver'
       webhookConfigs:
         - url: 'https://api.github.com/repos/vitorrgabriell/tech-challenge-fase-3-fiap/dispatches'
