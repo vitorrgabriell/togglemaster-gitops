@@ -8,8 +8,8 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: git@github.com:vitorrgabriell/togglemaster-gitops.git
-    targetRevision: main
+    repoURL: https://github.com/vitorrgabriell/togglemaster-gitops.git
+    targetRevision: HEAD
     path: monitoring/dashboards
   destination:
     server: https://kubernetes.default.svc

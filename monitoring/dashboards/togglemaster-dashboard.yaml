@@ -1,0 +1,124 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: togglemaster-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  togglemaster.json: |
+    {
+      "annotations": { "list": [] },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 1,
+      "id": null,
+      "links": [],
+      "liveNow": false,
+      "panels": [
+        {
+          "id": 1,
+          "title": "Cluster Health",
+          "type": "stat",
+          "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "expr": "sum(kube_node_info)", "legendFormat": "Nodes", "refId": "A" },
+            { "expr": "sum(kube_pod_info{namespace=\"tech-challenge\"})", "legendFormat": "Pods (tech-challenge)", "refId": "B" }
+          ],
+          "options": { "colorMode": "value", "graphMode": "area", "textMode": "auto" },
+          "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green", "value": null }] } } }
+        },
+        {
+          "id": 2,
+          "title": "Restarts em 24h (tech-challenge)",
+          "type": "stat",
+          "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=\"tech-challenge\"}[24h]))", "legendFormat": "Total Restarts", "refId": "A" }
+          ],
+          "options": { "colorMode": "value", "graphMode": "area" },
+          "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 1 }, { "color": "red", "value": 5 }] } } }
+        },
+        {
+          "id": 3,
+          "title": "Pods por Status",
+          "type": "piechart",
+          "gridPos": { "h": 4, "w": 12, "x": 12, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "expr": "sum by (phase) (kube_pod_status_phase{namespace=\"tech-challenge\"})", "legendFormat": "{{phase}}", "refId": "A" }
+          ],
+          "options": { "legend": { "displayMode": "table", "placement": "right", "showLegend": true } }
+        },
+        {
+          "id": 4,
+          "title": "CPU por Servico (cores)",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"tech-challenge\", container!=\"\", container!=\"POD\"}[5m])) by (pod)", "legendFormat": "{{pod}}", "refId": "A" }
+          ],
+          "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 } } }
+        },
+        {
+          "id": 5,
+          "title": "Memoria por Servico (MiB)",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "expr": "sum(container_memory_working_set_bytes{namespace=\"tech-challenge\", container!=\"\", container!=\"POD\"}) by (pod) / 1024 / 1024", "legendFormat": "{{pod}}", "refId": "A" }
+          ],
+          "fieldConfig": { "defaults": { "unit": "decmbytes", "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 } } }
+        },
+        {
+          "id": 6,
+          "title": "Request Rate (RPS) por Servico - OTel",
+          "type": "timeseries",
+          "description": "Metrica via OTel. Se vier vazia, ajustar nome para http_server_request_duration_seconds_count conforme validacao real.",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "expr": "sum(rate(http_server_duration_milliseconds_count[5m])) by (service_name)", "legendFormat": "{{service_name}}", "refId": "A" }
+          ],
+          "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 } } }
+        },
+        {
+          "id": 7,
+          "title": "Latencia p95 por Servico - OTel",
+          "type": "timeseries",
+          "description": "Histogram quantile sobre http_server_duration. Ajustar nome se necessario.",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "expr": "histogram_quantile(0.95, sum(rate(http_server_duration_milliseconds_bucket[5m])) by (service_name, le))", "legendFormat": "{{service_name}}", "refId": "A" }
+          ],
+          "fieldConfig": { "defaults": { "unit": "ms", "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 } } }
+        },
+        {
+          "id": 8,
+          "title": "Logs em Tempo Real - Loki",
+          "type": "logs",
+          "gridPos": { "h": 10, "w": 24, "x": 0, "y": 20 },
+          "datasource": { "type": "loki", "uid": "loki" },
+          "targets": [
+            { "expr": "{namespace=\"tech-challenge\"}", "refId": "A" }
+          ],
+          "options": { "showTime": true, "showLabels": false, "wrapLogMessage": true, "sortOrder": "Descending", "dedupStrategy": "none" }
+        }
+      ],
+      "refresh": "30s",
+      "schemaVersion": 38,
+      "tags": ["togglemaster", "fiap", "fase-4"],
+      "templating": { "list": [] },
+      "time": { "from": "now-1h", "to": "now" },
+      "timepicker": {},
+      "timezone": "browser",
+      "title": "ToggleMaster - Observabilidade Completa",
+      "uid": "togglemaster-main",
+      "version": 1,
+      "weekStart": ""
+    }
