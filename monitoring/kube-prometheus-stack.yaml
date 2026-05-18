@@ -25,7 +25,7 @@ spec:
                 memory: 1Gi
             serviceMonitorSelectorNilUsesHelmValues: false
             podMonitorSelectorNilUsesHelmValues: false
-
+            ruleSelectorNilUsesHelmValues: false
         grafana:
           adminPassword: admin
           persistence:
@@ -38,22 +38,35 @@ spec:
               memory: 256Mi
           service:
             type: ClusterIP
-
+          sidecar:
+            dashboards:
+              enabled: true
+              label: grafana_dashboard
+              labelValue: "1"
+              searchNamespace: ALL
+              folder: /tmp/dashboards
+              provider:
+                allowUiUpdates: true
+            datasources:
+              enabled: true
+              defaultDatasourceEnabled: true
         alertmanager:
           alertmanagerSpec:
+            alertmanagerConfigSelector:
+              matchLabels:
+                alertmanagerConfig: togglemaster
+            alertmanagerConfigMatcherStrategy:
+              type: None
             resources:
               requests:
                 cpu: 50m
                 memory: 64Mi
               limits:
                 memory: 128Mi
-
         nodeExporter:
           enabled: true
-
         kubeStateMetrics:
           enabled: true
-
         prometheusOperator:
           resources:
             requests:
