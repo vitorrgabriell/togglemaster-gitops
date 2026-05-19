@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alert-bridge
+  namespace: monitoring
+  labels:
+    app: alert-bridge
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alert-bridge
+  template:
+    metadata:
+      labels:
+        app: alert-bridge
+    spec:
+      containers:
+        - name: bridge
+          image: python:3.11-slim
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              pip install --no-cache-dir -r /code/requirements.txt && \
+              cd /code && \
+              gunicorn --bind 0.0.0.0:8080 --workers 2 --access-logfile - --error-logfile - app:app
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            - name: GITHUB_REPO
+              value: "vitorrgabriell/togglemaster-gitops"
+            - name: DEFAULT_NAMESPACE
+              value: "tech-challenge"
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: github-token-secret
+                  key: token
+          volumeMounts:
+            - name: code
+              mountPath: /code
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+      volumes:
+        - name: code
+          configMap:
+            name: alert-bridge-code

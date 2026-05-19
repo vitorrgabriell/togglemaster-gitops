@@ -1,0 +1,114 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alert-bridge-code
+  namespace: monitoring
+data:
+  app.py: |
+    """
+    Alertmanager → GitHub repository_dispatch bridge.
+
+    Recebe webhooks nativos do Alertmanager e traduz pro formato
+    repository_dispatch da GitHub API, disparando self-healing workflows.
+    """
+    import os
+    import sys
+    import logging
+    import requests
+    from flask import Flask, request, jsonify
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s %(levelname)s %(message)s',
+        stream=sys.stdout,
+    )
+    log = logging.getLogger(__name__)
+
+    app = Flask(__name__)
+
+    GITHUB_TOKEN = os.environ['GITHUB_TOKEN']
+    GITHUB_REPO = os.environ['GITHUB_REPO']
+    SERVICE_WHITELIST = os.environ.get(
+        'SERVICE_WHITELIST',
+        'auth-service,flag-service,targeting-service,analytics-service,evaluation-service',
+    ).split(',')
+    DEFAULT_NAMESPACE = os.environ.get('DEFAULT_NAMESPACE', 'tech-challenge')
+
+    @app.route('/health', methods=['GET'])
+    def health():
+        return jsonify({'status': 'ok'}), 200
+
+    @app.route('/webhook', methods=['POST'])
+    def webhook():
+        payload = request.get_json(silent=True)
+        if not payload or 'alerts' not in payload:
+            log.warning('Invalid payload received: %s', payload)
+            return jsonify({'error': 'invalid payload'}), 400
+
+        results = []
+        for alert in payload.get('alerts', []):
+            if alert.get('status') != 'firing':
+                continue
+
+            labels = alert.get('labels', {})
+            alertname = labels.get('alertname', 'unknown')
+            service = labels.get('service', '').strip()
+            namespace = labels.get('namespace', DEFAULT_NAMESPACE)
+
+            # Normalizar (caso venha "auth" ao invés de "auth-service")
+            if service and not service.endswith('-service'):
+                service = f'{service}-service'
+
+            if service not in SERVICE_WHITELIST:
+                log.warning('Service %s not in whitelist, skipping', service)
+                results.append({'service': service, 'status': 'skipped'})
+                continue
+
+            log.info('Dispatching self-heal: service=%s alert=%s', service, alertname)
+
+            try:
+                response = requests.post(
+                    f'https://api.github.com/repos/{GITHUB_REPO}/dispatches',
+                    headers={
+                        'Authorization': f'token {GITHUB_TOKEN}',
+                        'Accept': 'application/vnd.github.v3+json',
+                        'Content-Type': 'application/json',
+                    },
+                    json={
+                        'event_type': 'service-down',
+                        'client_payload': {
+                            'service': service,
+                            'namespace': namespace,
+                            'alertname': alertname,
+                            'replicas': '1',
+                        },
+                    },
+                    timeout=10,
+                )
+
+                if response.status_code == 204:
+                    log.info('GitHub dispatch OK for %s', service)
+                    results.append({'service': service, 'status': 'dispatched'})
+                else:
+                    log.error(
+                        'GitHub dispatch failed: %s %s',
+                        response.status_code, response.text,
+                    )
+                    results.append({
+                        'service': service,
+                        'status': 'failed',
+                        'code': response.status_code,
+                    })
+            except requests.RequestException as exc:
+                log.exception('Exception dispatching to GitHub: %s', exc)
+                results.append({'service': service, 'status': 'error', 'error': str(exc)})
+
+        return jsonify({'results': results}), 200
+
+    if __name__ == '__main__':
+        app.run(host='0.0.0.0', port=8080)
+
+  requirements.txt: |
+    flask==3.0.0
+    requests==2.31.0
+    gunicorn==21.2.0

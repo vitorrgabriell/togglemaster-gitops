@@ -1,0 +1,146 @@
+name: Self-Healing - Restart Service
+
+on:
+  repository_dispatch:
+    types: [service-down]
+  workflow_dispatch:
+    inputs:
+      service:
+        description: 'Service to restart (ex: auth-service)'
+        required: true
+        type: string
+      namespace:
+        description: 'Namespace'
+        required: false
+        default: 'tech-challenge'
+        type: string
+      replicas:
+        description: 'Target replicas'
+        required: false
+        default: '1'
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  CLUSTER_NAME: togglemaster-cluster
+  ALLOWED_NAMESPACES: 'tech-challenge'
+  ALLOWED_SERVICES: 'auth-service flag-service targeting-service analytics-service evaluation-service'
+
+jobs:
+  restart-service:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract alert payload
+        id: alert
+        run: |
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "service=${{ github.event.client_payload.service }}" >> $GITHUB_OUTPUT
+            echo "namespace=${{ github.event.client_payload.namespace }}" >> $GITHUB_OUTPUT
+            echo "replicas=${{ github.event.client_payload.replicas }}" >> $GITHUB_OUTPUT
+            echo "alertname=${{ github.event.client_payload.alertname }}" >> $GITHUB_OUTPUT
+          else
+            echo "service=${{ inputs.service }}" >> $GITHUB_OUTPUT
+            echo "namespace=${{ inputs.namespace }}" >> $GITHUB_OUTPUT
+            echo "replicas=${{ inputs.replicas }}" >> $GITHUB_OUTPUT
+            echo "alertname=manual-trigger" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Validate target (security check)
+        run: |
+          SVC="${{ steps.alert.outputs.service }}"
+          NS="${{ steps.alert.outputs.namespace }}"
+
+          if [[ ! " ${ALLOWED_SERVICES} " =~ " ${SVC} " ]]; then
+            echo "::error::Service '${SVC}' não está na whitelist (${ALLOWED_SERVICES})"
+            exit 1
+          fi
+
+          if [[ ! " ${ALLOWED_NAMESPACES} " =~ " ${NS} " ]]; then
+            echo "::error::Namespace '${NS}' não autorizado (${ALLOWED_NAMESPACES})"
+            exit 1
+          fi
+
+          echo "✅ Target válido: ${SVC} em ${NS}"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'v1.30.0'
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig \
+            --name ${{ env.CLUSTER_NAME }} \
+            --region ${{ env.AWS_REGION }}
+
+      - name: Scale up service
+        id: scale
+        run: |
+          SVC="${{ steps.alert.outputs.service }}"
+          NS="${{ steps.alert.outputs.namespace }}"
+          REPLICAS="${{ steps.alert.outputs.replicas }}"
+
+          echo "🔧 Escalando ${SVC} em ${NS} para ${REPLICAS} replicas..."
+
+          kubectl scale deploy "${SVC}" -n "${NS}" --replicas="${REPLICAS}"
+
+          echo "⏳ Aguardando rollout..."
+          kubectl rollout status deploy/"${SVC}" -n "${NS}" --timeout=180s
+
+          echo "✅ ${SVC} restaurado"
+          kubectl get pods -n "${NS}" -l app="${SVC}"
+
+      - name: Notify Discord (success)
+        if: success()
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          curl -X POST "${DISCORD_WEBHOOK}" \
+            -H "Content-Type: application/json" \
+            -d @- <<EOF
+          {
+            "embeds": [{
+              "title": "🔧 Self-Healing Executado",
+              "description": "Service **${{ steps.alert.outputs.service }}** restaurado automaticamente",
+              "color": 3066993,
+              "fields": [
+                {"name": "Alert", "value": "${{ steps.alert.outputs.alertname }}", "inline": true},
+                {"name": "Namespace", "value": "${{ steps.alert.outputs.namespace }}", "inline": true},
+                {"name": "Replicas", "value": "${{ steps.alert.outputs.replicas }}", "inline": true},
+                {"name": "Run", "value": "[#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})", "inline": false}
+              ]
+            }]
+          }
+          EOF
+
+      - name: Notify Discord (failure)
+        if: failure()
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          curl -X POST "${DISCORD_WEBHOOK}" \
+            -H "Content-Type: application/json" \
+            -d @- <<EOF
+          {
+            "embeds": [{
+              "title": "❌ Self-Healing Falhou",
+              "description": "Intervenção manual necessária em **${{ steps.alert.outputs.service }}**",
+              "color": 15158332,
+              "fields": [
+                {"name": "Alert", "value": "${{ steps.alert.outputs.alertname }}", "inline": true},
+                {"name": "Run", "value": "[#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})", "inline": false}
+              ]
+            }]
+          }
+          EOF
