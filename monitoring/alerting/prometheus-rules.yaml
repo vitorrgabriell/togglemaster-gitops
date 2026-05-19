@@ -4,35 +4,56 @@ metadata:
   name: togglemaster-rules
   namespace: monitoring
   labels:
-    release: kube-prometheus-stack
     app: kube-prometheus-stack
+    release: kube-prometheus-stack
 spec:
   groups:
     - name: togglemaster.rules
       interval: 30s
       rules:
-        - alert: HighErrorRate5xx
+        # Self-healing trigger: deployment sem replicas disponíveis
+        - alert: ServiceUnavailable
           expr: |
-            (
-              sum(rate(http_requests_total{status=~"5..",service="auth-service"}[2m]))
-              /
-              sum(rate(http_requests_total{service="auth-service"}[2m]))
-            ) * 100 > 5
-          for: 1m
+            kube_deployment_status_replicas_available{
+              namespace="tech-challenge",
+              deployment=~".*-service"
+            } == 0
+          for: 30s
           labels:
             severity: critical
-            service: auth-service
             action: restart
+            service: '{{ $labels.deployment }}'
           annotations:
-            summary: 'Auth-service com error rate > 5%'
-            description: 'auth-service está com {{ $value | printf "%.2f" }}% de erros 5xx nos últimos 2min. Self-healing acionado.'
+            summary: "Service {{ $labels.deployment }} sem replicas disponíveis"
+            description: |
+              Deployment {{ $labels.deployment }} no namespace {{ $labels.namespace }}
+              está com 0 replicas disponíveis há mais de 30s.
+              Self-healing automático será acionado via GitHub Actions.
 
-        - alert: ServiceDown
-          expr: up{job=~".*-service"} == 0
-          for: 1m
+        # Alerta complementar: latência alta (apenas notifica, sem self-heal)
+        - alert: HighLatencyP95
+          expr: |
+            histogram_quantile(0.95,
+              sum by (le, exported_job) (
+                rate(togglemaster_http_server_duration_milliseconds_bucket[5m])
+              )
+            ) > 1000
+          for: 2m
           labels:
-            severity: critical
-            service: '{{ $labels.job }}'
+            severity: warning
+            service: '{{ $labels.exported_job }}'
           annotations:
-            summary: 'Service {{ $labels.job }} está down'
-            description: '{{ $labels.job }} não responde há 1min'
+            summary: "Latência p95 alta em {{ $labels.exported_job }}"
+            description: "p95 acima de 1000ms nos últimos 5min."
+
+        # Alerta de pods em CrashLoopBackOff (notifica, sem self-heal automático)
+        - alert: PodCrashLooping
+          expr: |
+            rate(kube_pod_container_status_restarts_total{namespace="tech-challenge"}[5m]) > 0
+          for: 2m
+          labels:
+            severity: warning
+            service: '{{ $labels.pod }}'
+          annotations:
+            summary: "Pod {{ $labels.pod }} em CrashLoopBackOff"
+            description: "Container restartando repetidamente no namespace tech-challenge."
