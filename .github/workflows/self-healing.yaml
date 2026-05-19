@@ -25,7 +25,7 @@ permissions:
 
 env:
   AWS_REGION: us-east-1
-  CLUSTER_NAME: togglemaster-cluster
+  CLUSTER_NAME: togglemaster-eks
   ALLOWED_NAMESPACES: 'tech-challenge'
   ALLOWED_SERVICES: 'auth-service flag-service targeting-service analytics-service evaluation-service'
 
